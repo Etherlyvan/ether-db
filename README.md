@@ -4,7 +4,18 @@ Database key-value sederhana dengan TypeScript dan Node.js. Data disimpan dalam 
 
 ## Menjalankan
 
-Gunakan Node.js 24 dan npm. Buka terminal di folder `ether-db`:
+Gunakan Node.js 24 dan npm. Proyek ini memakai ether-http sebagai dependency lokal. Clone kedua repository berdampingan (lewati `git clone` jika folder sudah ada):
+
+```sh
+git clone https://github.com/Etherlyvan/ether-http.git
+git clone https://github.com/Etherlyvan/ether-db.git
+cd ether-http
+npm ci
+npm run build
+cd ../ether-db
+```
+
+Dari folder `ether-db`:
 
 ```sh
 npm ci
@@ -55,4 +66,39 @@ File sementara dibuat di direktori yang sama untuk mengganti snapshot melalui re
 
 Proyek belajar untuk data kecil, dengan satu instance pemilik per file. Tidak ada locking antarproses/instance; membuka beberapa instance untuk menulis file yang sama dapat menyebabkan perubahan saling menimpa. Semua data ada di memori, setiap perubahan menulis ulang seluruh snapshot, dan operasi file synchronous memblokir event loop. Belum ada transaksi multioperasi, indeks, query, enkripsi, atau write-ahead log. Rename bukan jaminan data bertahan dari listrik mati: belum ada fsync atau pemulihan otomatis file sementara setelah proses berhenti mendadak.
 
-Tes menggunakan direktori sementara untuk memeriksa persistensi, overwrite, penghapusan, isolasi object, data tidak valid, file rusak, dan kegagalan penulisan. Integrasi API dengan ether-http dapat dibuat setelah fondasi penyimpanan ini dipahami.
+Tes menggunakan direktori sementara untuk memeriksa persistensi, overwrite, penghapusan, isolasi object, data tidak valid, file rusak, dan kegagalan penulisan. Tes API juga menutup dan membuka ulang server untuk memeriksa persistensi melalui HTTP.
+
+## API HTTP dengan ether-http
+
+```sh
+npm run serve
+```
+
+Server memakai ether-http (TCP), berjalan di `http://127.0.0.1:3001`, dan menyimpan data di `data/api.json`. Variabel lingkungan `PORT` dan `DB_PATH` dapat mengubah port dan lokasi file. Untuk menjalankan hasil build: `npm run build`, lalu `npm run serve:built`. Server ether-http pada port 3000 tidak perlu dijalankan terpisah.
+
+| Method | Endpoint | Fungsi |
+|---|---|---|
+| GET | `/health` | Status server |
+| GET | `/keys` | Semua key dan jumlahnya |
+| PUT | `/kv?key=user` | Simpan atau timpa nilai JSON |
+| GET | `/kv?key=user` | Baca nilai; 404 jika tidak ditemukan |
+| DELETE | `/kv?key=user` | Hapus nilai; 404 jika tidak ditemukan |
+
+`key` harus ada tepat satu kali dan tidak kosong. Encode karakter khusus pada key sebagai URL query parameter. PUT wajib memakai `Content-Type: application/json` (415 jika tidak sesuai); JSON tidak valid menghasilkan 400. Nilai `null` disimpan sebagai nilai, bukan sebagai penghapusan. GET juga mendukung HEAD tanpa body. Error penyimpanan menghasilkan 500 tanpa detail internal.
+
+Contoh di PowerShell, gunakan string JSON sederhana agar konsisten pada Windows PowerShell dan PowerShell baru:
+
+```powershell
+curl.exe -i -X PUT 'http://127.0.0.1:3001/kv?key=score' -H 'Content-Type: application/json' --data-binary '42'
+curl.exe -i 'http://127.0.0.1:3001/kv?key=score'
+curl.exe -i 'http://127.0.0.1:3001/keys'
+curl.exe -i -X DELETE 'http://127.0.0.1:3001/kv?key=score'
+```
+
+Untuk mencoba object JSON di PowerShell:
+
+```powershell
+Invoke-RestMethod -Method Put -Uri 'http://127.0.0.1:3001/kv?key=user' -ContentType 'application/json' -Body '{"name":"etherlyvan"}'
+```
+
+API ini untuk pembelajaran lokal: server mengikat alamat loopback dan belum memiliki autentikasi. Batas ukuran request dan batasan protokol mengikuti ether-http. Jangan membuka instance database kedua untuk menulis file yang sedang dipakai API.
